@@ -24,15 +24,21 @@ import (
 )
 
 const (
-	passwordSecretField = ".spec.secret"
+	passwordSecretField   = ".spec.secret"
+	prometheusSecretField = ".spec.prometheusSecret"
 )
 
 var (
 	apiWatchFields = []string{
 		passwordSecretField,
+		prometheusSecretField,
 	}
 	applierWatchFields = []string{
 		passwordSecretField,
+	}
+	watcherWatchFields = []string{
+		passwordSecretField,
+		prometheusSecretField,
 	}
 )
 
@@ -48,6 +54,11 @@ const (
 	// DatabaseUsername is the name of key in the secret for the database
 	// hostname
 	DatabaseHostname = "database_hostname"
+	// Prometheus configuration keys in prometheusSecret
+	PrometheusHost         = "host"
+	PrometheusPort         = "port"
+	PrometheusCaCertSecret = "ca_secret"
+	PrometheusCaCertKey    = "ca_key"
 
 	// WatcherAPILabelPrefix - a unique, service binary specific prefix for the
 	// labels the WatcherAPI controller uses on children objects
