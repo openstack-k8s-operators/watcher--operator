@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	certmgrv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -62,6 +63,7 @@ func init() {
 	utilruntime.Must(keystonev1.AddToScheme(scheme))
 	utilruntime.Must(memcachedv1.AddToScheme(scheme))
 	utilruntime.Must(routev1.AddToScheme(scheme))
+	utilruntime.Must(certmgrv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

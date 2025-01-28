@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"github.com/openstack-k8s-operators/lib-common/modules/common/route"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 
@@ -68,11 +69,6 @@ type WatcherCommon struct {
 	// +kubebuilder:default=metric-storage-prometheus-config
 	// Secret containing prometheus connection parameters
 	PrometheusSecret string `json:"prometheusSecret"`
-
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec
-	// TLS - Parameters related to the TLS
-	TLS tls.API `json:"tls,omitempty"`
 }
 
 // WatcherTemplate defines the fields used in the top level CR
@@ -106,6 +102,40 @@ type WatcherTemplate struct {
 	// +kubebuilder:default={replicas:1}
 	// APIServiceTemplate - define the watcher-api service
 	APIServiceTemplate WatcherAPITemplate `json:"apiServiceTemplate"`
+
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// APIOverride, provides the ability to override the generated
+	// manifest of several child resources.
+	APIOverride Override `json:"apiOverride,omitempty"`
+
+	// +kubebuilder:validation:Enum=Ingress;PodLevel;None
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=PodLevel
+	// TLSLevel choose until what level should use TLS (terminate at the route,
+	// at the pod or no TLS at all)
+	TLSLevel string `json:"tlsLevel"`
+}
+
+// Override to override the generated manifest of several child resources.
+type Override struct {
+	// +kubebuilder:validation:Optional
+	// Route overrides to use when creating the public service endpoint
+	Route *route.OverrideSpec `json:"route,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// TLS - overrides tls parameters for public endpoint
+	TLS *TLSServiceOverride `json:"tls,omitempty"`
+}
+
+// TLSServiceOverride overrides tls parameters for public endpoint
+type TLSServiceOverride struct {
+	// +kubebuilder:validation:Optional
+	// Name of a Secret in the same Namespace as the service, containing the server's private key, public certificate
+	// and CA certificate for TLS.
+	// The Secret must store these as tls.key, tls.crt and ca.crt respectively.
+	SecretName string `json:"secretName,omitempty"`
 }
 
 // PasswordSelector to identify the DB and AdminUser password from the Secret
@@ -138,6 +168,11 @@ type WatcherSubCrsCommon struct {
 	// ServiceAccount - service account name used internally to provide
 	// Watcher services the default SA name
 	ServiceAccount string `json:"serviceAccount"`
+
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// TLS - Parameters related to the TLS
+	TLS tls.API `json:"tls,omitempty"`
 }
 
 // WatcherSubCrsTemplate define de common part of the input parameters specified by the user to
@@ -165,30 +200,6 @@ type WatcherSubCrsTemplate struct {
 	// or overwrite rendered information using raw OpenStack config format. The content gets added to
 	// to /etc/<service>/<service>.conf.d directory as a custom config file.
 	CustomServiceConfig string `json:"customServiceConfig,omitempty"`
-}
-
-// MetalLBConfig to configure the MetalLB loadbalancer service
-type MetalLBConfig struct {
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	// IPAddressPool expose VIP via MetalLB on the IPAddressPool
-	IPAddressPool string `json:"ipAddressPool"`
-
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=true
-	// SharedIP if true, VIP/VIPs get shared with multiple services
-	SharedIP bool `json:"sharedIP"`
-
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=""
-	// SharedIPKey specifies the sharing key which gets set as the annotation on the LoadBalancer service.
-	// Services which share the same VIP must have the same SharedIPKey. Defaults to the IPAddressPool if
-	// SharedIP is true, but no SharedIPKey specified.
-	SharedIPKey string `json:"sharedIPKey"`
-
-	// +kubebuilder:validation:Optional
-	// LoadBalancerIPs, request given IPs from the pool if available. Using a list to allow dual stack (IPv4/IPv6) support
-	LoadBalancerIPs []string `json:"loadBalancerIPs"`
 }
 
 type WatcherImages struct {

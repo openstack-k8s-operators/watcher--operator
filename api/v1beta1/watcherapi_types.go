@@ -19,6 +19,7 @@ package v1beta1
 import (
 	"github.com/openstack-k8s-operators/lib-common/modules/common/condition"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/service"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -65,9 +66,7 @@ type APIOverrideSpec struct {
 	// Override configuration for the Service created to serve traffic to
 	// the cluster.
 	// The key must be the endpoint type (public, internal)
-	// temporarily use MetalLBConfig struct, later we'll switch to
-	// service.RoutedOverrideSpec
-	Service map[service.Endpoint]MetalLBConfig `json:"service,omitempty"`
+	Service map[service.Endpoint]service.RoutedOverrideSpec `json:"service,omitempty"`
 }
 
 // WatcherAPITemplate defines the input parameters specified by the user to
@@ -79,6 +78,11 @@ type WatcherAPITemplate struct {
 	// Override, provides the ability to override the generated manifest of
 	// several child resources.
 	Override APIOverrideSpec `json:"override,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec
+	// TLS - Parameters related to the TLS
+	TLS tls.API `json:"tls,omitempty"`
 }
 
 //+kubebuilder:object:root=true
