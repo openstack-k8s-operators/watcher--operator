@@ -52,9 +52,8 @@ type WatcherApplierStatus struct {
 	// the openstack-operator in the top-level CR (e.g. the ContainerImage)
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// TODO(dviroel): Add ReadyCount once Deployment is implemented
 	// ReadyCount of watcher Applier instances
-	// ReadyCount int32 `json:"readyCount,omitempty"`
+	ReadyCount int32 `json:"readyCount,omitempty"`
 
 	// Map of hashes to track e.g. job status
 	Hash map[string]string `json:"hash,omitempty"`
