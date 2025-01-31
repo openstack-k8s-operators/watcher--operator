@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	memcachedv1 "github.com/openstack-k8s-operators/infra-operator/apis/memcached/v1beta1"
+	"github.com/openstack-k8s-operators/lib-common/modules/common"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/condition"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/helper"
@@ -24,14 +25,20 @@ import (
 )
 
 const (
-	passwordSecretField   = ".spec.secret"
-	prometheusSecretField = ".spec.prometheusSecret"
+	passwordSecretField     = ".spec.secret"
+	prometheusSecretField   = ".spec.prometheusSecret"
+	caBundleSecretNameField = ".spec.tls.caBundleSecretName"
+	tlsAPIInternalField     = ".spec.tls.api.internal.secretName"
+	tlsAPIPublicField       = ".spec.tls.api.public.secretName"
 )
 
 var (
 	apiWatchFields = []string{
 		passwordSecretField,
 		prometheusSecretField,
+		tlsAPIInternalField,
+		tlsAPIPublicField,
+		caBundleSecretNameField,
 	}
 	applierWatchFields = []string{
 		passwordSecretField,
@@ -39,6 +46,9 @@ var (
 	watcherWatchFields = []string{
 		passwordSecretField,
 		prometheusSecretField,
+	}
+	decisionEngineWatchFields = []string{
+		passwordSecretField,
 	}
 )
 
@@ -296,4 +306,10 @@ func ensureMemcached(
 	conditionUpdater.MarkTrue(condition.MemcachedReadyCondition, condition.MemcachedReadyMessage)
 
 	return memcached, err
+}
+
+func getAPIServiceLabels() map[string]string {
+	return map[string]string{
+		common.AppSelector: WatcherAPILabelPrefix,
+	}
 }
