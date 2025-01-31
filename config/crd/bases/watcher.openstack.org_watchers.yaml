@@ -652,16 +652,6 @@ spec:
                 description: ServiceUser - optional username used for this service
                   to register in keystone
                 type: string
-              tlsLevel:
-                default: PodLevel
-                description: |-
-                  TLSLevel choose until what level should use TLS (terminate at the route,
-                  at the pod or no TLS at all)
-                enum:
-                - Ingress
-                - PodLevel
-                - None
-                type: string
             required:
             - apiContainerImageURL
             - apiServiceTemplate

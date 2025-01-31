@@ -58,6 +58,7 @@ import (
 	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
+	corev1beta1 "github.com/openstack-k8s-operators/openstack-operator/apis/core/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	watcherv1beta1 "github.com/openstack-k8s-operators/watcher-operator/api/v1beta1"
@@ -144,13 +145,14 @@ func (e *Endpoints) GetEndptCertSecret(endpt service.Endpoint) *string {
 func (ed *EndpointDetail) ensureRoute(
 	ctx context.Context,
 	helper *helper.Helper,
+	controlPlane *corev1beta1.OpenStackControlPlane,
 ) (ctrl.Result, error) {
 	if ed.Route.Create {
 		if ed.Service.OverrideSpec.EmbeddedLabelsAnnotations == nil {
 			ed.Service.OverrideSpec.EmbeddedLabelsAnnotations = &service.EmbeddedLabelsAnnotations{}
 		}
 
-		ctrlResult, err := ed.CreateRoute(ctx, helper)
+		ctrlResult, err := ed.CreateRoute(ctx, helper, controlPlane)
 		return ctrlResult, err
 	}
 
@@ -160,6 +162,7 @@ func (ed *EndpointDetail) ensureRoute(
 func (ed *EndpointDetail) CreateRoute(
 	ctx context.Context,
 	helper *helper.Helper,
+	controlPlane *corev1beta1.OpenStackControlPlane,
 ) (ctrl.Result, error) {
 	// initialize the route with any custom provided route override
 	// per default use the service name as targetPortName if we don't have the annotation.
@@ -240,6 +243,12 @@ func (ed *EndpointDetail) CreateRoute(
 				Annotations: ed.Annotations,
 				Labels:      util.MergeMaps(ed.Labels, map[string]string{serviceCertSelector: ""}),
 				Usages:      nil,
+			}
+			if controlPlane.Spec.TLS.Ingress.Cert.Duration != nil {
+				certRequest.Duration = &controlPlane.Spec.TLS.Ingress.Cert.Duration.Duration
+			}
+			if controlPlane.Spec.TLS.Ingress.Cert.RenewBefore != nil {
+				certRequest.Duration = &controlPlane.Spec.TLS.Ingress.Cert.RenewBefore.Duration
 			}
 
 			// create the cert using the default issue for the endpointSpec
@@ -338,14 +347,6 @@ const (
 	// serviceCertSelector selector passed to cert-manager to set on the
 	// service cert secret
 	serviceCertSelector = "service-cert"
-
-	// publicIssuerName name of the default public issuer name used in
-	// openstack-operator
-	publicIssuerName = "rootca-public"
-
-	// internalIssuerName name of the default internal issuer name used in
-	// openstack-operator
-	internalIssuerName = "rootca-public"
 )
 
 // end of helper types to expose services
@@ -388,6 +389,10 @@ func (r *WatcherReconciler) GetLogger(ctx context.Context) logr.Logger {
 //+kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups="security.openshift.io",resourceNames=anyuid,resources=securitycontextconstraints,verbs=use
+
+// controlplane, should only be needed until watcher-operator is integrated
+// into openstack-operator
+// +kubebuilder:rbac:groups=core.openstack.org,resources=openstackcontrolplanes,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -632,11 +637,29 @@ func (r *WatcherReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return ctrl.Result{}, err
 	}
 
+	controlPlaneLists := &corev1beta1.OpenStackControlPlaneList{}
+
+	listOps := []client.ListOption{
+		client.InNamespace(instance.Namespace),
+	}
+	err = r.Client.List(ctx, controlPlaneLists, listOps...)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if len(controlPlaneLists.Items) > 1 {
+		return ctrl.Result{}, fmt.Errorf("more than one OpenStackControlPlane found in namespace %s", instance.Namespace)
+	}
+	if len(controlPlaneLists.Items) == 0 {
+		// no control plane found
+		return ctrl.Result{}, fmt.Errorf("No OpenStackControlPlane found in namespace %s", instance.Namespace)
+	}
+	controlPlane := &controlPlaneLists.Items[0]
 	oldSpec := instance.DeepCopy().Spec.APIServiceTemplate
 	ctrlResult, err = r.exposeEndpoints(
 		ctx,
 		helper,
 		instance,
+		controlPlane,
 	)
 	if err != nil {
 		instance.Status.Conditions.Set(condition.FalseCondition(
@@ -1263,6 +1286,7 @@ func (r *WatcherReconciler) exposeEndpoints(
 	ctx context.Context,
 	helper *helper.Helper,
 	instance *watcherv1beta1.Watcher,
+	controlPlane *corev1beta1.OpenStackControlPlane,
 
 ) (ctrl.Result, error) {
 	Log := r.GetLogger(ctx)
@@ -1292,7 +1316,8 @@ func (r *WatcherReconciler) exposeEndpoints(
 		}
 
 		ed.Service.OverrideSpec = instance.Spec.APIServiceTemplate.Override.Service[ed.Type]
-		if instance.Spec.TLSLevel == "PodLevel" {
+
+		if controlPlane.Spec.TLS.PodLevel.Enabled {
 			ed.Service.TLS.Enabled = true
 			ed.Service.TLS.CertName = fmt.Sprintf("%s-svc", ed.Name)
 		} else {
@@ -1311,7 +1336,7 @@ func (r *WatcherReconciler) exposeEndpoints(
 
 			// we have TLS termination at the ingress if any of PodLevel or
 			// Ingress tlslevels are selected
-			if instance.Spec.TLSLevel != "None" {
+			if controlPlane.Spec.TLS.Ingress.Enabled {
 				// TLS for route enabled if public endpoint TLS is true
 				ed.Route.TLS.Enabled = true
 				ed.Route.TLS.CertName = fmt.Sprintf("%s-route", ed.Name)
@@ -1330,11 +1355,8 @@ func (r *WatcherReconciler) exposeEndpoints(
 						return ctrl.Result{}, err
 					}
 				} else {
-					// we don't support custom cert issuers for now, just rely
-					// on the default ones from the openstack-operator
-					ed.Route.TLS.IssuerName = publicIssuerName
+					ed.Route.TLS.IssuerName = controlPlane.GetPublicIssuer()
 				}
-
 			}
 
 			if ed.Service.TLS.Enabled {
@@ -1369,7 +1391,7 @@ func (r *WatcherReconciler) exposeEndpoints(
 				} else {
 					// issue a certificate for public pod virthost
 					certRequest := certmanager.CertificateRequest{
-						IssuerName: publicIssuerName,
+						IssuerName: controlPlane.GetPublicIssuer(),
 						CertName:   ed.Service.TLS.CertName,
 						Hostnames: []string{
 							fmt.Sprintf("%s.%s.svc", ed.Name, instance.Namespace),
@@ -1383,6 +1405,12 @@ func (r *WatcherReconciler) exposeEndpoints(
 					addSubjNames := util.GetStringListFromMap(svc.Annotations, tls.AdditionalSubjectNamesKey)
 					if len(addSubjNames) > 0 {
 						certRequest.Hostnames = append(certRequest.Hostnames, addSubjNames...)
+					}
+					if controlPlane.Spec.TLS.Ingress.Cert.Duration != nil {
+						certRequest.Duration = &controlPlane.Spec.TLS.Ingress.Cert.Duration.Duration
+					}
+					if controlPlane.Spec.TLS.Ingress.Cert.RenewBefore != nil {
+						certRequest.RenewBefore = &controlPlane.Spec.TLS.Ingress.Cert.RenewBefore.Duration
 					}
 
 					certSecret, ctrlResult, err := certmanager.EnsureCert(
@@ -1398,7 +1426,7 @@ func (r *WatcherReconciler) exposeEndpoints(
 				}
 			}
 
-			ctrlResult, err := ed.ensureRoute(ctx, helper)
+			ctrlResult, err := ed.ensureRoute(ctx, helper, controlPlane)
 			if err != nil || (ctrlResult != ctrl.Result{}) {
 				return ctrlResult, err
 			}
@@ -1408,7 +1436,7 @@ func (r *WatcherReconciler) exposeEndpoints(
 				// create certificate for internal pod virthost
 				// request certificate
 				certRequest := certmanager.CertificateRequest{
-					IssuerName: internalIssuerName,
+					IssuerName: controlPlane.GetInternalIssuer(),
 					CertName:   ed.Service.TLS.CertName,
 					Hostnames: []string{
 						fmt.Sprintf("%s.%s.svc", ed.Name, instance.Namespace),
@@ -1422,6 +1450,12 @@ func (r *WatcherReconciler) exposeEndpoints(
 				addSubjNames := util.GetStringListFromMap(svc.Annotations, tls.AdditionalSubjectNamesKey)
 				if len(addSubjNames) > 0 {
 					certRequest.Hostnames = append(certRequest.Hostnames, addSubjNames...)
+				}
+				if controlPlane.Spec.TLS.PodLevel.Internal.Cert.Duration != nil {
+					certRequest.Duration = &controlPlane.Spec.TLS.PodLevel.Internal.Cert.Duration.Duration
+				}
+				if controlPlane.Spec.TLS.PodLevel.Internal.Cert.RenewBefore != nil {
+					certRequest.RenewBefore = &controlPlane.Spec.TLS.PodLevel.Internal.Cert.RenewBefore.Duration
 				}
 
 				certSecret, ctrlResult, err := certmanager.EnsureCert(

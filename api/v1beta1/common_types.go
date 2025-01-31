@@ -108,13 +108,6 @@ type WatcherTemplate struct {
 	// APIOverride, provides the ability to override the generated
 	// manifest of several child resources.
 	APIOverride Override `json:"apiOverride,omitempty"`
-
-	// +kubebuilder:validation:Enum=Ingress;PodLevel;None
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=PodLevel
-	// TLSLevel choose until what level should use TLS (terminate at the route,
-	// at the pod or no TLS at all)
-	TLSLevel string `json:"tlsLevel"`
 }
 
 // Override to override the generated manifest of several child resources.
