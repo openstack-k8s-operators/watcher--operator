@@ -1,9 +1,11 @@
 apiVersion: watcher.openstack.org/v1beta1
 kind: WatcherDecisionEngine
 metadata:
-  name: watcherdecisionengine-kuttl
+  name: watcher-decision-engine-kuttl
   namespace: watcher-kuttl-default
 spec:
   secret: osp-secret
   tls:
     caBundleSecretName: "combined-ca-bundle"
+  containerImage: "quay.io/podified-master-centos9/openstack-watcher-decision-engine:current-podified"
+  serviceAccount: "watcher-watcher-kuttl"
