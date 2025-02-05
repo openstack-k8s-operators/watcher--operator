@@ -1,0 +1,140 @@
+= Installation Guide
+
+== Getting Started
+
+You will need an operational operator deployed OpenStack system
+with the Telemetry operator installed. The following links point
+to documents detailed how to create this required starting environment:
+
+* https://github.com/openstack-k8s-operators/openstack-operator [Openstack Operator]
+* https://github.com/openstack-k8s-operators/telemetry-operator [Telemetry Operator]
+* https://kubernetes.io/docs/concepts/extend-kubernetes/operator/ [Kubernetes operators]
+* https://prometheus.io/ [Prometheus metrics]
+
+To verify that the environment set up is ready,
+
+Log in to the Kubernetes/Openshift environment
+Example uses CRC (https://crc.dev/docs/introducing/ [Code Ready Containers]):
+
+[,bash]
+----
+$ oc login -u <username> -p <password> https://api.crc.testing:6443 --insecure-skip-tls-verify=true
+----
+
+Then access the Openstack client and verify the service endpoints are available:
+
+[,bash]
+----
+$ oc rsh openstackclient
+
+$ openstack endpoint list
++----------------------------------+-----------+--------------+--------------+---------+-----------+----------------------------------------------------------+
+| ID                               | Region    | Service Name | Service Type | Enabled | Interface | URL                                                      |
++----------------------------------+-----------+--------------+--------------+---------+-----------+----------------------------------------------------------+
+| 0e72234df99144c3b7e13a62cd42e1a5 | regionOne | keystone     | identity     | True    | internal  | http://keystone-internal.openstack.svc:5000              |
+| 139b5c649f074eae874ca2d8a3b7fdcb | regionOne | glance       | image        | True    | public    | https://glance-default-public-openstack.apps-crc.testing |
+| 1c6ff2b6f2b54a13a8fefc9dacb8f4a9 | regionOne | neutron      | network      | True    | public    | https://neutron-public-openstack.apps-crc.testing        |
+| 4bb6dde288a64c08bc2cd8e2d714aa6d | regionOne | glance       | image        | True    | internal  | http://glance-default-internal.openstack.svc:9292        |
+| 6dfd4ac8fae2485580f626d743603c05 | regionOne | keystone     | identity     | True    | public    | https://keystone-public-openstack.apps-crc.testing       |
+| 98e631462d2f4828a55e558f36e23e2f | regionOne | neutron      | network      | True    | internal  | http://neutron-internal.openstack.svc:9696               |
+| 9a6be9fccf3e42cd8b3205a9c1d88114 | regionOne | placement    | placement    | True    | internal  | http://placement-internal.openstack.svc:8778             |
+| aa4363e8f74641ce9a53c14fd4ce8184 | regionOne | placement    | placement    | True    | public    | https://placement-public-openstack.apps-crc.testing      |
+| b313c0ce41b840a884b8e0ac4a5a819f | regionOne | cinderv3     | volumev3     | True    | public    | https://cinder-public-openstack.apps-crc.testing/v3      |
+| ccadeae4322346fe9feee6bb0677b014 | regionOne | nova         | compute      | True    | internal  | http://nova-internal.openstack.svc:8774/v2.1             |
+| dfac9cb0706d411b8c90c6df264fb575 | regionOne | nova         | compute      | True    | public    | https://nova-public-openstack.apps-crc.testing/v2.1      |
+| e8314601b5184f74b99b0815e1d57d5e | regionOne | cinderv3     | volumev3     | True    | internal  | http://cinder-internal.openstack.svc:8776/v3             |
++----------------------------------+-----------+--------------+--------------+---------+-----------+----------------------------------------------------------+
+----
+
+Now verify that Telemetry operator with Prometheus metric storage is ready:
+
+[,bash]
+----
+$ oc get telemetry
+NAME        STATUS   MESSAGE
+telemetry   True     Setup complete
+
+$ oc get route
+NAME                           HOST/PORT                                                 PATH   SERVICES                       PORT                           TERMINATION     WILDCARD
+cinder-public                  cinder-public-openstack.apps-crc.testing                         cinder-public                  cinder-public                  edge/Redirect   None
+glance-default-public          glance-default-public-openstack.apps-crc.testing                 glance-default-public          glance-default-public          edge/Redirect   None
+horizon                        horizon-openstack.apps-crc.testing                               horizon                        horizon                        edge/Redirect   None
+keystone-public                keystone-public-openstack.apps-crc.testing                       keystone-public                keystone-public                edge/Redirect   None
+metric-storage-alertmanager    metric-storage-alertmanager-openstack.apps-crc.testing           metric-storage-alertmanager    web                                            None
+metric-storage-prometheus      metric-storage-prometheus-openstack.apps-crc.testing             metric-storage-prometheus      web                            edge/Redirect   None
+neutron-public                 neutron-public-openstack.apps-crc.testing                        neutron-public                 neutron-public                 edge/Redirect   None
+nova-novncproxy-cell1-public   nova-novncproxy-cell1-public-openstack.apps-crc.testing          nova-novncproxy-cell1-public   nova-novncproxy-cell1-public   edge/Redirect   None
+----
+
+Prometheus metrics will be viewable in a web browser at https://metric-storage-prometheus-openstack.apps-crc.testing.
+
+== Installing the Operator
+
+.Procedure
+
+. Now that you have a ready working environment, you will need to install the Watcher Operator. You will need to create a `watcher-operator.yaml` file:
++
+----
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: watcher-operator-index
+  namespace: openstack-operators
+spec:
+  image: quay.io/openstack-k8s-operators/watcher-operator-index:latest
+  sourceType: grpc
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openstack
+  namespace: openstack-operators
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: watcher-operator
+  namespace: openstack-operators
+spec:
+  name: watcher-operator
+  channel: alpha
+  source: watcher-operator-index
+  sourceNamespace: openstack-operators
+----
++
+. With cluster-admin permissions in Openshift run:
++
+----
+$ oc apply -f watcher-operator.yaml
+catalogsource.operators.coreos.com/watcher-operator-index created
+operatorgroup.operators.coreos.com/openstack unchanged
+subscription.operators.coreos.com/watcher-operator created
+----
++
+. Check that the operator is installed:
++
+----
+$ oc get subscription.operators.coreos.com/watcher-operator -n openstack-operators
+NAME               PACKAGE            SOURCE                   CHANNEL
+watcher-operator   watcher-operator   watcher-operator-index   alpha
+
+$ oc get pod -l openstack.org/operator-name=watcher -n openstack-operators
+NAME                                                  READY   STATUS    RESTARTS   AGE
+watcher-operator-controller-manager-dd95db756-kslw9   2/2     Running   0          44s
+----
+
+== Deploying the Watcher Service
+
+Now, you will need to create a Watcher Custom Resource based on the `Watcher CRD`.
+Use the following commands to view the Watcher CRD definition and specification schema:
+
+[,bash]
+----
+$ oc describe crd watcher
+
+$ oc explain watcher.spec
+----
+
+<to be continued ...>
+
